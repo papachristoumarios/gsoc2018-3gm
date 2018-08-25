@@ -4,23 +4,37 @@
 [![Awesome](https://cdn.rawgit.com/sindresorhus/awesome/d7305f38d29fed78fa85652e3a63e154dd8e8829/media/badge.svg)](https://github.com/sindresorhus/awesome)
 
 
-# gsoc2018-3gm
+# :rocket: Google Summer Of Code 2018 - 3gm
 
 Welcome to _Government Gazette text mining, cross linking, and codification Project_ (or 3gm for short) using [Natural Language Processing Methods](https://en.wikipedia.org/wiki/Natural_language_processing) and Practices on **Greek Legislation**.
 
 This project aims to provide with the most recent versions of each law, i.e. an automated [**codex**](https://en.wikipedia.org/wiki/Codification_(law)) via NLP methods and practices.
 
+## About the project
+
+We live in a complex regulatory environment. As citizens, we obey government regulations from many authorities. As members of organized societies and groups, we must obey organizational policies and rules. As social beings, we are bound by conventions we make with others. As individuals, they are bound by personal rules of conduct. The full number and size of regulations can be really scary. We can agree on some general principles but, at the same time, we can disagree on how these principles apply to specific situations. In order to minimize such disagreements, regulators are often obliged to create numerous regulations or very large regulations to deal with special cases.
+
+In the recent years plenty of attention has been gathering around analyzing public sector texts via text mining methods enabled by modern libraries, algorithms and practices and bought to to the forefront by open source projects such as textblob, spaCy, SciPy, Tensorflow and NLTK. These collaborative productive efforts seem to be a shift towards more efficient understanding of natural language by machines which can be used in conjunction with public documents in order to provide useful tools for legislators. This emerging sector is usually referred as "Computational Law".
+
+This project, developed under the auspices the Google Summer of Code 2018 Program, carries out the extraction of Government Gazette (ΦΕΚ) texts from the National Printing House (ET), cross-links them with each other and, finally, identifies and applies the amendments to the legal text by providing automatic codification of the Greek legislation using methods and techniques of Natural Language Processing. This will allow the elimination of bureaucratic procedures and great time savings for lawyers looking for the most recent versions of statutes in legal databases. The detection of amendments is automated in order to amend the amendments to the laws merged into a common law, a procedure known as codification of the law. The new "merged" / modified / codified laws can show the current text of a law at every moment. This is something that is being traditionally done by hand and our aim was to automate it.
+
+Finally, the laws are clustered into topics according to their content using a non-supervised machine learning model (Latent Dirichlet Allocation) to provide a more holistic representation of Greek legislation. Also, for easier indexing, PageRank was used and therefore the interconnections of the laws were positively taken into account, because the more references there is a legislative text than the other the more important it is characterized.
+
+Through the analysis, categorization and codification of the GG documents, this project facilitates key elements of everyday life such as the elimination of bureaucracy and the efficient management of public documents to implement tangible solutions, which allows huge savings for lawyers and citizens.
+
 ## Demo
 
-The project is hosted at [3gm.papachristoumarios.me](http://3gm.papachristoumarios.me),  [3gm.ellak.gr](https://3gm.ellak.gr) or [openlaws.ellak.gr](https://openlaws.ellak.gr)
+The project is hosted at [3gm.ellak.gr](https://3gm.ellak.gr) or [openlaws.ellak.gr](https://openlaws.ellak.gr).
 
 ## Timeline
 
-You can view the detailed timeline [here](https://docs.google.com/document/d/1AnbAzqE2HCsJy2q2zWHcRBvtmBbimoYIqm8AQ4bQrZA/edit?usp=sharing). 
+You can view the detailed timeline [here](https://docs.google.com/document/d/1AnbAzqE2HCsJy2q2zWHcRBvtmBbimoYIqm8AQ4bQrZA/edit?usp=sharing). What has been done during the program can be found in the [Final Progress Report](https://gist.github.com/papachristoumarios/5ccd30c191e1c7051bd364447e4e9b54).
 
 ---
 
 ## Google Summer of Code 2018
+
+The project met and exceeded its goals for Google Summer of Code 2018. [Link](https://summerofcode.withgoogle.com/projects/#4875998630248448)
 
 Google Summer of Code participant: Marios Papachristou ([papachristoumarios](https://github.com/papachristoumarios))
 
@@ -34,34 +48,34 @@ Organization: [GFOSS - Open Technologies Alliance](https://gfoss.eu/)
 
 ---
 
-## Installation & Usage
+## Overview
 
-1. [Installation Instructions](https://github.com/eellak/gsoc2018-3gm/wiki/Installation)
-2. [Fetching Documents](https://github.com/eellak/gsoc2018-3gm/wiki/Fetching-Documents)
-3. [Codifying Laws](https://github.com/eellak/gsoc2018-3gm/wiki/Codifier)
-4. [Testing](https://github.com/eellak/gsoc2018-3gm/wiki/Testing)
-
-For a tutorial on getting started click [here](https://github.com/eellak/gsoc2018-3gm/wiki/Tutorial)
-
----
-
-## Initial Problem Statement
-
-In the recent years plenty of attention has been gathering around analyzing public sector texts via text mining methods enabled by modern libraries, algorithms and practices and bought to to the forefront by open source projects such as textblob, spaCy, SciPy, Tensorflow and NLTK. These collaborative productive efforts seem to be a shift towards more efficient understanding of natural language by machines which can be used in conjunction with public documents in order to provide a more robust organization and codification in the legal sector.  
-
-This proposal  aims to extend the existing Government Gazette (GG) text mining code by implementing features in order to organize and (cross)-link GG texts with legal texts and detect the signatories via heuristic and machine learning methods. This will enable elimination of bureaucratic processes and huge time savings for jurists who for example seek legal documents in legal databases.
-
-## Initial Project Proposal
-
-For this purpose, the GG documents have to be downloaded as PDFs and parse them to raw text files. Heuristic rules and Named Entity Recognition methodologies have to be applied in order to detect competent ministers and references to other legal texts which will be converted into hypertext format.
-
-This process is either targeted in detecting amendments proposed and signed in the GG documents so that they can be incorporated within other laws or detecting similar categories of amendments and merging them under a common law, also referred as law codification. The newly “merged” / edited / codified laws could be then legislated. The project will be coded preferably in the Python programming language.   
-
-The project is divided into main stages / milestones described below as well as their deliverables. A first metric of the evaluation of the project could be the successful categorization of laws referring to a certain category of laws (e.g. regarding mediation or new laws) and are contained in different GG articles. A second key metric would be the extension of this to a large number of law categories. Last but not least, the project can be tested with the NLP library spaCy which is also a proposed project through this year’s Google Summer of Code proposals by GFOSS, which can also be tested beyond the scope of this GSoC.
-
-Through the case of analyzing, categorizing and codifying Government Gazette articles this proposal sets out to illustrate key points such as elimination of bureaucracy and efficient management of public documents for the implementation of tangible solutions enabling huge savings of time for jurists. The synergy of machine learning algorithms combined with in vitro processing of legal texts signifies the potential for broader usage of machine learning in the public sector; an area with ample amounts of unorganized data.
-
-**Keywords:** _text mining, government gazette, machine learning, law codification_
+- **Getting started**
+  - [Home](https://github.com/eellak/gsoc2018-3gm/wiki)
+  - [Installation](https://github.com/eellak/gsoc2018-3gm/wiki/Installation)
+  - [Operation](https://github.com/eellak/gsoc2018-3gm/wiki/Operation)
+  - [Codifier](https://github.com/eellak/gsoc2018-3gm/wiki/Codifier)
+  - [Architecture](https://github.com/eellak/gsoc2018-3gm/wiki/Architecture)
+  - [Final Progress Report](https://github.com/eellak/gsoc2018-3gm/wiki/Final-Report-for-Google-Summer-of-Code-2018)
+- **Algorithms**
+  - [Amendment Detection](https://github.com/eellak/gsoc2018-3gm/wiki/Algorithms-for-analyzing-Government-Gazette-Documents)
+  - [Topic Modeling](https://github.com/eellak/gsoc2018-3gm/wiki/Topic-Modelling)
+  - [Ranking](https://github.com/eellak/gsoc2018-3gm/wiki/Ranking-Laws-using-PageRank)
+  - [Evaluation and Metrics](https://github.com/eellak/gsoc2018-3gm/wiki/Evaluation-and-Metrics)
+- **Datasets and Continuous Integration**
+  - [Fetching Documents](https://github.com/eellak/gsoc2018-3gm/wiki/Fetching-Documents)
+  - [Processing Documents](https://github.com/eellak/gsoc2018-3gm/wiki/Document-Processing)
+- **Documentation**
+  - [API Documentation](https://github.com/eellak/gsoc2018-3gm/wiki/API-Documentation)
+  - [RESTful API](https://github.com/eellak/gsoc2018-3gm/wiki/RESTful-API)
+  - Help (for web application)
+    - [English](https://github.com/eellak/gsoc2018-3gm/wiki/Help-(in-English))
+    - [Greek](https://github.com/eellak/gsoc2018-3gm/wiki/Help-(in-Greek))
+- **Development**
+  - [Testing](https://github.com/eellak/gsoc2018-3gm/wiki/Testing)
+  - [Licensing](https://github.com/eellak/gsoc2018-3gm/wiki/Licensing)
+  - [Future Work & Contributing](https://github.com/eellak/gsoc2018-3gm/wiki/Contributing-To-The-Project)
+  - [Document Embeddings](https://github.com/eellak/gsoc2018-3gm/wiki/Document-Embeddings-with-Doc2Vec)
 
 ---
 
@@ -90,7 +104,8 @@ Through the case of analyzing, categorizing and codifying Government Gazette art
 12. [**Unit tests**](https://github.com/eellak/gsoc2018-3gm/blob/master/3gm/tests.py) integrated to Travis CI.
 13. [**Versioning**](https://github.com/eellak/gsoc2018-3gm/blob/master/3gm/database.py) system for laws with support for _checkouts_, _rollbacks_ etc. 
 14. [**Ranking**](https://github.com/eellak/gsoc2018-3gm/wiki/Ranking-Laws-using-PageRank) of laws using PageRank provided by the `networkx` package. 
-15. **[Amendment Detection Algorithm](https://github.com/eellak/gsoc2018-3gm/wiki/Algorithms-for-analyzing-Government-Gazette-Documents)**. For example (taken from Greek Government Gazette):
+15. [**Summarization Module using TextRank**](https://github.com/eellak/gsoc2018-3gm/blob/master/3gm/summarize.py) for providing summaries at the search results.
+16. **[Amendment Detection Algorithm](https://github.com/eellak/gsoc2018-3gm/wiki/Algorithms-for-analyzing-Government-Gazette-Documents)**. For example (taken from Greek Government Gazette):
 
 > Μετά το άρθρο 9Α του ν. 4170/2013, που προστέθηκε με το άρθρο 3 του ν. 4474/2017, **προστίθεται** _άρθρο 9ΑΑ_, ως εξής:
 
@@ -116,7 +131,7 @@ The above text signifies the addition of an article to an existing law. We use a
 ```json
 {'action': 'αντικαθίσταται', 'law': {'article': { '_id': '9AA', 'content': 'Πεδίο εφαρμογής και προϋποθέσεις της υποχρεωτικής αυτόματης ανταλλαγής πληροφοριών όσον αφορά στην Έκθεση ανά Χώρα 1. Η Τελική Μητρική Οντότητα ενός Ομίλου Πολυεθνικής Επιχείρησης (Ομίλου ΠΕ) που έχει τη φορολογική της κατοικία στην Ελλάδα ή οποιαδήποτε άλλη Αναφέρουσα Οντότητα, σύμφωνα με το Παράρτημα ΙΙΙ Τμήμα ΙΙ, υποβάλλει την Έκθεση ανά Χώρα όσον αφορά το οικείο Φορολογικό Έτος Υποβολής Εκθέσεων εντός δώδεκα (12) μηνών από την τελευταία ημέρα του Φορολογικού Έτους Υποβολής Εκθέσεων του Ομίλου ΠΕ, σύμφωνα με το Παράρτημα ΙΙΙ Τμήμα ΙΙ.'}, '_id': 'ν. 4170/2013'}, '_id': 14}
 ```
-* And is translated to a **MongoDB operation*** (in this case insertion into the database). Then the information is stored to the database.
+* And is translated to a **MongoDB operation** (in this case insertion into the database). Then the information is stored to the database.
 
 For more information visit the [corresponding Wiki Page](https://github.com/eellak/gsoc2018-3gm/wiki/Algorithms-for-analyzing-Government-Gazette-Documents)
 

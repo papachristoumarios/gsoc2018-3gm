@@ -3,7 +3,7 @@
 
 <h1>Νομοθετήματα με την ετικέτα {{ [label] | render_badges_single('dark') | safe }}</h1>
 
-<p class="sparse">Κατάταξη αποτελεσμάτων με βάση τη
+<p class="sparse">Αλλάξτε σε κατάταξη με βάση
 <strong>
 {% if sorting == 'rank' %}
 σημαντικότητα
@@ -29,7 +29,11 @@
 {% endif %}
 <ol>
   {% for ref in refs %}
-  <li><a href="{{ url_for('codify_law', identifier=ref )}}">{{ ref }}</a></li>
+  <li><a href="{{ url_for('codify_law', identifier=ref )}}">{{ ref }}</a>
+    {% if summaries[ref] != '' %}
+    <p>{{ summaries[ref] }}</p>
+    {% endif %}
+  </li>
   {% endfor %}
 </ol>
 

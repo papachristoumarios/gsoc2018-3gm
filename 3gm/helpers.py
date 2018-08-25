@@ -511,14 +511,13 @@ def get_edges(graph):
     return list(E)
 
 
-def ssconj_doc_iterator(l, i, is_plural=False):
+def ssconj_doc_iterator(l, i, is_plural=False, recursive=False):
     """Generator which yields components connected with commas and an "AND" (και)
     Example:
     1. παράγραφοι 3, 4 και 5 would yield [3,4,5]
     2. πρώτη και δεύτερη παράγραφος would yield [1,2]
     3. παράγραφος 1 would yield 1
     """
-
     j = i + 1
     if not is_plural:
         if str(
@@ -537,20 +536,58 @@ def ssconj_doc_iterator(l, i, is_plural=False):
                 # raise Exception('Invalid use of Iterator')
                 yield 'append'
     else:
-        result = []
         n = len(l)
+        forward = False
         while j < n:
-            if str(l[j]) == 'και':
+            if str(l[j]).strip(',').isdigit() or str(l[j]).endswith(
+                    "'") or str(l[j]).endswith('΄') or str(l[j]).endswith(','):
+                forward = True
+                yield str(l[j]).strip(',')
+
+            elif str(l[j]) == 'και':
                 if str(l[j + 1]).isdigit() or str(l[j + 1]
                                                   ).endswith("'") or str(l[j + 1]).endswith('΄'):
                     yield str(l[min(j + 1, n)]).strip(',')
+                    try:
+                        if recursive and j + 3 < n:
+                            yield from ssconj_doc_iterator(l, j + 2, is_plural=is_plural, recursive=recursive)
+                        else:
+                            return
+                    except:
+                        return
+            elif str(l[j]) in ['ως', 'έως']:
+                if str(l[j + 1]) == 'και':
+                    k = 2
+                else:
+                    k = 1
+                if str(l[j + k]).strip(',').isdigit():
+                    start = int(l[j - 1].strip(','))
+                    end = int(l[j + k].strip(','))
+                    for i in range(start + 1, end + 1):
+                        yield str(i)
+                elif str(l[j + k]).endswith("'") or str(l[j + k]).endswith('΄'):
+                    start = str(l[j - 1]).strip('΄').strip("'")
+                    end = str(l[j + k]).strip('΄').strip("'")
+                    start_num = entities.Numerals.GreekNum(start)
+                    end_num = entities.Numerals.GreekNum(end)
+
+                    while True:
+                        yield start_num.s
+                        if start_num.value == end_num.value:
+                            break
+                        start_num.value += 1
+                try:
+                    if recursive and j + k + 2 < n:
+                        yield from ssconj_doc_iterator(l, j + k + 1, is_plural=is_plural, recursive=recursive)
+                    else:
+                        return
+                except:
                     return
-            elif str(l[j]).isdigit() or str(l[j]).endswith(
-                    "'") or str(l[j]).endswith('΄') or str(l[j]).endswith(','):
-                yield str(l[j]).strip(',')
+
+
             j += 1
 
-        if result == []:
+        if not forward:
             j = i - 1
             while j >= 0:
                 n = entities.Numerals.full_number_to_integer(
@@ -647,16 +684,6 @@ def compare_year(s):
     except BaseException:
         return int(s.split('.')[-1])
 
-def split_dict(d, key):
-    results = []
-
-    for x in d[key]:
-        r = copy.copy(d)
-        d[key] = x
-        results.append(x)
-
-    return results
-
 def parse_filename(fn):
     fn = fn.replace('.txt', '')
     year = fn[:4]
@@ -704,3 +731,12 @@ def compare_statutes(x, y):
             return int(xs[1].split('/')[0]) < int(ys[1].split('/')[0])
         else:
             return xs[0] != 'ν.'
+
+def remove_front_num(s, max_span=4):
+    """Remove front number if exists.
+    e.g. '1. Lorem Ipsum' becomes 'Lorem Ipsum'"""
+    res = re.search(r'\d+.', s)
+    last_span = res.span()[1]
+    if last_span <= max_span:
+        s = s[last_span:].lstrip()
+    return s

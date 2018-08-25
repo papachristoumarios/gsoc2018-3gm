@@ -388,6 +388,8 @@ class LawCodifier:
         for identifier, law in self.laws.items():
             articles = law.sentences.keys()
 
+            self.detect_and_apply_removals(identifier=identifier, generate_links=True)
+
             for article in articles:
                 for paragraph in law.get_paragraphs(article):
                     try:
@@ -400,12 +402,12 @@ class LawCodifier:
                             for s in non_extracts:
 
                                 neighbors = re.finditer(entity, s)
-                                neighbors = set([neighbor.group()
+                                neighbors = set([neighbor.group().lower()
                                                  for neighbor in neighbors])
 
                                 tmp = s.split(' ')
 
-                                for u in neighbors:
+                                for u in map(lambda x: x.lower(), neighbors):
                                     if u not in self.links:
                                         self.links[u] = Link(u)
                                     is_modifying = False
@@ -429,10 +431,10 @@ class LawCodifier:
                             # referential
                             for s in extracts:
                                 neighbors = re.finditer(entity, s)
-                                neighbors = set([neighbor.group()
+                                neighbors = set([neighbor.group().lower()
                                                  for neighbor in neighbors])
 
-                                for u in neighbors:
+                                for u in map(lambda x: x.lower(), neighbors):
                                     u = u.lower()
                                     if u not in self.links:
                                         self.links[u] = Link(u)
@@ -442,10 +444,10 @@ class LawCodifier:
                     # except there are Unmatched brackets
                     except Exception as e:
                         neighbors = re.finditer(entity, paragraph)
-                        neighbors = set([neighbor.group()
+                        neighbors = set([neighbor.group().lower()
                                          for neighbor in neighbors])
 
-                        for u in neighbors:
+                        for u in map(lambda x: x.lower(), neighbors):
 
                             if u not in self.links:
                                 self.links[u] = Link(u)
@@ -454,7 +456,10 @@ class LawCodifier:
                                 law.identifier, paragraph, link_type='γενικός')
 
         for link in self.links.values():
-            self.db.links.save(link.serialize())
+            try:
+                self.db.links.save(link.serialize())
+            except:
+                pass
 
     def populate_links(self):
         """Populate links from database and fetch latest versions"""
@@ -541,7 +546,52 @@ class LawCodifier:
         """Run pagerank on graph built from links"""
         self.graph = self.build_graph_from_links()
         self.ranks = pagerank(self.graph, alpha=0.9)
+        ranking = list(zip(self.ranks.keys(), self.ranks.values()))
+        ranking.sort(key=lambda x: x[1])
+        self.ranking = {}
+        for i, rr in enumerate(ranking):
+            l, r = rr
+            self.ranking[l] = i
+
         return self.ranks
+
+    def detect_and_apply_removals(self, identifier, generate_links=True):
+        """Apply removals, if any, of a given law"""
+        articles = self.laws[identifier].get_articles_sorted()
+        removals_regex = r'καταργο(ύ|υ)μενες διατ(ά|α)ξεις'
+        removing_articles = []
+
+        # detect removal region
+        for article in articles:
+            try:
+                if re.search(removals_regex, self.laws[identifier].titles[article].lower()):
+                    removing_articles.append(article)
+            except:
+                continue
+
+        # detect and apply removals
+        for article in removing_articles:
+            for i, paragraph in enumerate(self.laws[identifier].get_paragraphs(article)):
+                removals, exceptions = syntax.ActionTreeGenerator.detect_removals(paragraph)
+
+                for subtree in removals:
+                    target = subtree['law']['_id']
+                    try:
+                        if generate_links:
+                            if target not in self.links:
+                                self.links[target] = Link(target)
+                            self.links[target].add_link(identifier, paragraph, link_type='απαλειπτικός')
+                            self.db.links.save(self.links[target].serialize())
+                        else:
+                            self.laws[target].query_from_tree(subtree)
+                            logging.info('Applied removal on ' + target)
+                    except KeyError as e:
+                        logging.warning('Statute nonexistent ' + target)
+
+    def detect_and_apply_all_removals(self):
+        """Detect and apply all removals in the codifier"""
+        for identifier in self.laws:
+            self.detect_and_apply_removals(identifier=identifier)
 
 
 def build(

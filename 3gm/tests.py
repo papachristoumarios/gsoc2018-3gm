@@ -169,20 +169,6 @@ def test_codifier():
 
 	assert(law.sentences['1']['3'] == ['Lorem Lorem  '])
 
-	k = len(law.sentences['1']['5'])
-	s = 'Στην παράγραφο 5 του άρθρου 1 διαγράφεται το εδάφιο 1 .'
-	tree = syntax.ActionTreeGenerator.generate_action_tree_from_string(s)
-
-	for t in tree:
-		law.query_from_tree(t)
-
-	assert(len(law.sentences['1']['5']) < k)
-	print(law.sentences['1']['5'])
-
-
-	law.apply_amendment(s)
-	print(law.sentences['1']['5'])
-
 	s = 'Στο ν. 4511/2018 προστίθεται άρθρο 15 ως εξής: « 1. This is a paragraph 2. This is another paragraph»'
 	tree = syntax.ActionTreeGenerator.generate_action_tree_from_string(s)
 
@@ -218,6 +204,8 @@ def test_codifier():
 
 	assert('15' not in law.sentences.keys())
 
-
-if __name__ == '__main__':
-	test_codifier()
+def test_iterator():
+	s = 'παράγραφοι 6, 7, 8 και 9, 10 και 11, 18 έως 25, 26 και 27'
+	z = helpers.ssconj_doc_iterator(s.split(' '), 0, True, True)
+	assert(list(z) == ['6', '7', '8', '9', '10', '11', '18', '19',
+		'20', '21', '22', '23', '24', '25', '27', '25', '26', '27'])

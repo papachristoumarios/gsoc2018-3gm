@@ -1,4 +1,5 @@
 import entities
+import json
 import re
 import collections
 import logging
@@ -8,8 +9,6 @@ import itertools
 import copy
 import string
 import phrase_fun
-
-
 import spacy
 import el_small
 nlp = el_small.load()
@@ -43,6 +42,7 @@ class ActionTreeGenerator:
     def __call__(self, s):
         return ActionTreeGenerator.generate_action_tree_from_string(s)
 
+    # Stem lookup
     trans_lookup = {
         'άρθρ': 'article',
         'παράγραφ': 'paragraph',
@@ -53,6 +53,7 @@ class ActionTreeGenerator:
         'υποπερίπτωσ': 'subcase'
     }
 
+    # Children Lookup (needed for nesting)
     children_loopkup = {
         'law': ['article'],
         'article': ['paragraph'],
@@ -84,6 +85,11 @@ class ActionTreeGenerator:
 
     @staticmethod
     def detect_latest_statute(extract):
+        """Detects the latest statute of any type
+        in a given string.
+        :params extract : Query String
+        """
+
         legislative_acts = list(
             re.finditer(
                 entities.legislative_act_regex,
@@ -102,8 +108,6 @@ class ActionTreeGenerator:
 
         laws = [law.group() for law in laws]
 
-        logging.info('Laws are', laws)
-
         law = ActionTreeGenerator.get_latest_statute(laws)
 
         return law
@@ -115,6 +119,11 @@ class ActionTreeGenerator:
             max_what_window=20,
             max_where_window=30,
             use_regex=False):
+        """Main algorithm for amendment detection
+        The approach followed is hybrid
+        The procedure is outlined here:
+        https://github.com/eellak/gsoc2018-3gm/wiki/Algorithms-for-analyzing-Government-Gazette-Documents
+        """
 
         # results are stored here
 
@@ -138,6 +147,7 @@ class ActionTreeGenerator:
             tmp = list(map(lambda s: s.strip(
                 string.punctuation), non_extract.split(' ')))
 
+            # Detect amendment action
             for action in entities.actions:
                 for i, w in enumerate(doc):
                     if action == w.text:
@@ -160,6 +170,7 @@ class ActionTreeGenerator:
                             except IndexError:
                                 extract = None
 
+                        # Detect what is amended
                         found_what, tree, is_plural = ActionTreeGenerator.get_nsubj(
                             doc, i, tree)
                         if found_what:
@@ -230,6 +241,11 @@ class ActionTreeGenerator:
 
     @staticmethod
     def nest_tree_helper(vertex, tree):
+        """Nest a dict to a new one. (helper function)
+        Each value must have a children attribute
+        :params vertex : Root vertex
+        :params tree : Tree as dictionary
+        """
         if tree[vertex] == {}:
             return tree
         if tree[vertex]['children'] == []:
@@ -246,10 +262,20 @@ class ActionTreeGenerator:
 
     @staticmethod
     def nest_tree(vertex, tree):
+        """Nest a dict to a new one. (helper function)
+        Each value must have a children attribute
+        :params vertex : Root vertex
+        :params tree : Tree as dictionary
+        """
         ActionTreeGenerator.nest_tree_helper(vertex, tree)
 
     @staticmethod
     def get_nsubj(doc, i, tree):
+        """Get nsubj dependency, in order to find what is
+        amended, using spaCy Greek Language model
+        :params doc : A spaCy doc object
+        :params i: The action position
+        :params tree : The JSON tree"""
         found_what = False
         root_token = doc[i]
         for child in root_token.children:
@@ -313,6 +339,11 @@ class ActionTreeGenerator:
 
     @staticmethod
     def get_rois_from_extract(q, what, idx_list):
+        """Get ROIs from extracts
+        :params q : Extract
+        :params what : Type of amendment
+        :params idx_list : List of numeric/alphabetic indices
+        """
         queries = []
         for idx in idx_list:
             if what in ['παράγραφος', 'παράγραφοι']:
@@ -341,6 +372,8 @@ class ActionTreeGenerator:
 
     @staticmethod
     def split_renumbering_tree(tree):
+        """Splits tree in case of renumbering
+        :params tree : The given tree to be split"""
         results = []
         for x, y in zip(tree['what']['number'], tree['what']['to']):
             r = copy.copy(tree)
@@ -352,7 +385,10 @@ class ActionTreeGenerator:
 
     @staticmethod
     def split_tree(tree):
-
+        """Splits tree into subtrees if multiple
+        amendmets are detected in the same sentence.
+        For example amending paragraphs 3 and 4 would
+        yield two subtrees"""
         try:
             idx_list = tree['what']['number']
             extract = tree['what']['content']
@@ -380,6 +416,7 @@ class ActionTreeGenerator:
 
     @staticmethod
     def get_renumbering(tree, doc):
+        """Get renumbering content"""
         start = tree['root']['_id']
         is_plural = helpers.is_plural(tree['what']['context'])
 
@@ -392,37 +429,43 @@ class ActionTreeGenerator:
 
     @staticmethod
     def get_content(tree, extract, s, secondary=False):
+        """Get content of amendment
+        :params tree : The dict tree
+        :params extract : The given content / extract
+        :params secondary : Set to true after splitting
+        """
+
         max_depth = 0
         if tree['what']['context'] in ['φράση', 'φράσεις', 'λέξη', 'λέξεις']:
             return tree, 6
         elif tree['what']['context'] in ['άρθρο', 'άρθρα']:
-            if tree['root']['action'] != 'διαγράφεται':
+            if tree['root']['action'] not in ['διαγράφεται', 'διαγράφονται', 'αναριθμείται', 'αναριθμούνται']:
                 content = extract if not secondary else tree['what']['content']
                 tree['article']['content'] = content
                 tree['what']['content'] = content
             max_depth = 3
 
         elif tree['what']['context'] in ['παράγραφος', 'παράγραφοι']:
-            if tree['root']['action'] != 'διαγράφεται':
+            if tree['root']['action'] not in ['διαγράφεται', 'διαγράφονται', 'αναριθμείται', 'αναριθμούνται']:
                 content = extract if not secondary else tree['what']['content']
                 tree['paragraph']['content'] = content
                 tree['what']['content'] = content
             max_depth = 4
 
         elif tree['what']['context'] in ['εδάφιο', 'εδάφια']:
-            if tree['root']['action'] != 'διαγράφεται':
+            if tree['root']['action'] not in ['διαγράφεται', 'διαγράφονται', 'αναριθμείται', 'αναριθμούνται']:
                 content = extract if not secondary else tree['what']['content']
                 tree['what']['content'] = content
             max_depth = 5
 
         elif tree['what']['context'] in ['περίπτωση', 'περιπτώσεις']:
-            if tree['root']['action'] != 'διαγράφεται':
+            if tree['root']['action'] not in ['διαγράφεται', 'διαγράφονται', 'αναριθμείται', 'αναριθμούνται']:
                 content = extract
                 tree['what']['content'] = content
             max_depth = 5
 
         elif tree['what']['context'] in ['υποπερίπτωση', 'υποπεριπτώσεις']:
-            if tree['root']['action'] != 'διαγράφεται':
+            if tree['root']['action'] not in ['διαγράφεται', 'διαγράφονται', 'αναριθμείται', 'αναριθμούνται']:
                 content = extract
                 tree['what']['content'] = content
             max_depth = 5
@@ -430,26 +473,20 @@ class ActionTreeGenerator:
         return tree, max_depth
 
     @staticmethod
-    def detect_with_iterator(non_extract_split, words):
-        for i, w in enumerate(non_extract_split):
-            if w in words:
-                try:
-                    iters = list(
-                        helpers.ssconj_doc_iterator(
-                            non_extract_split, i))
-                    return iters[0]
-                except BaseException:
-                    continue
+    def build_level(tmp, subtree, max_depth, stem, list_iter=False):
+        """Builds a level of the tree using the stems lookup"""
 
-    @staticmethod
-    def build_level(tmp, subtree, max_depth, stem):
         lookup = ActionTreeGenerator.trans_lookup[stem]
 
         if not re.search(stem, subtree['what']['context']):
             for i, w in enumerate(tmp):
                 if re.search(stem, w):
-                    subtree[lookup]['_id'] = next(
-                        helpers.ssconj_doc_iterator(tmp, i))
+                    if not list_iter:
+                        subtree[lookup]['_id'] = next(
+                            helpers.ssconj_doc_iterator(tmp, i))
+                    else:
+                        subtree[lookup]['_id'] = list(
+                            helpers.ssconj_doc_iterator(tmp, i))
                     subtree[lookup]['children'] = ActionTreeGenerator.children_loopkup[lookup]
                     break
         else:
@@ -459,10 +496,148 @@ class ActionTreeGenerator:
         return subtree
 
     @staticmethod
-    def build_levels(tmp, subtree):
+    def build_levels(tmp, subtree, list_iter=False):
+        """Build all levels using the stems"""
+
         stems = list(ActionTreeGenerator.trans_lookup.keys())
         for i, stem in enumerate(stems):
             subtree = ActionTreeGenerator.build_level(
-                tmp, subtree, i + 2, stem)
+                tmp, subtree, i + 2, stem, list_iter=list_iter)
 
         return subtree
+
+    @staticmethod
+    def get_smallest(tree):
+        """Detect smallest (μικρότερο μόριο) part of given a tree"""
+
+        for key in tree:
+            try:
+                for child in ActionTreeGenerator.children_loopkup[key]:
+                    if child not in tree:
+                        return key
+            except KeyError:
+                pass
+        if 'law' in tree:
+            return 'law'
+        else:
+            raise IndexError()
+
+    @staticmethod
+    def break_smallest(tree):
+        """Break a tree into subtrees on the smallest node"""
+
+        smallest = ActionTreeGenerator.get_smallest(tree)
+        tree['what']['context'] = smallest
+
+        if smallest == 'law':
+            return [tree], smallest
+
+        for key in tree:
+            if key != smallest:
+                try:
+                    if isinstance(tree[key]['_id'], list):
+                        tree[key]['_id'] = tree[key]['_id'][0]
+                except:
+                    pass
+
+        subtrees = ActionTreeGenerator.split_dict_subkey(tree, smallest, subkey='_id')
+        return subtrees, smallest
+
+    @staticmethod
+    def split_dict_subkey(d, key, subkey):
+        """Split a dict of dicts on a subkey of a given key
+        :params d : Dictionary to be split
+        :params key : Dictionary Key
+        :params subkey : Dictionary subkey"""
+        results = []
+
+        for x in d[key][subkey]:
+            r = copy.deepcopy(d)
+            r[key][subkey] = str(x)
+            results.append(r)
+
+        return results
+
+    @staticmethod
+    def detect_removals_helper(s, law=None):
+        """Removals detection helper function"""
+        tmp = s.split(' ')
+
+        tree = collections.defaultdict(dict)
+        tree['root']['action'] = 'διαγράφεται'
+        if law == None:
+            try:
+                tree['law']['_id'] = ActionTreeGenerator.detect_latest_statute(s)
+            except:
+                return []
+        else:
+            tree['law']['_id'] = law
+        tree = ActionTreeGenerator.build_levels_helper(tmp, tree, list_iter=True, recursive=True)
+
+        subtrees, smallest = ActionTreeGenerator.break_smallest(tree)
+
+        return subtrees, smallest
+
+    @staticmethod
+    def build_level_helper(tmp, subtree, max_depth, stem, list_iter=False, recursive=True):
+        """Builds a level of the tree using the stems lookup"""
+        lookup = ActionTreeGenerator.trans_lookup[stem]
+
+        for i, w in enumerate(tmp):
+            if re.search(stem, w):
+                is_plural = helpers.is_plural(w)
+                if not list_iter:
+                    subtree[lookup]['_id'] = next(
+                        helpers.ssconj_doc_iterator(tmp, i))
+                else:
+                    try:
+                        subtree[lookup]['_id'] = list(
+                            helpers.ssconj_doc_iterator(tmp, i, is_plural=is_plural, recursive=recursive))
+                    except:
+                        continue        
+                subtree[lookup]['children'] = ActionTreeGenerator.children_loopkup[lookup]
+
+        return subtree
+
+    @staticmethod
+    def build_levels_helper(tmp, subtree, list_iter=False, recursive=True):
+        """Build all levels using the stems"""
+        stems = list(ActionTreeGenerator.trans_lookup.keys())
+        for i, stem in enumerate(stems):
+            subtree = ActionTreeGenerator.build_level_helper(
+                tmp, subtree, i + 2, stem, list_iter=list_iter, recursive=recursive)
+
+        return subtree
+
+    @staticmethod
+    def detect_removals(q):
+        """Detect removals (καραργούμενες διατάξεις) on a string
+        :params q : Query string"""
+        split_regex = r'[^0-9],|[0-9], [^0-9]|καθώς και'
+        q = tokenizer.tokenizer.remove_subordinate(q)
+
+        removals = []
+        exceptions = []
+
+        try:
+            law = ActionTreeGenerator.detect_latest_statute(q)
+        except:
+            return removals, exceptions
+        exceptions_regex = r'εκτός|εξαίρεση|εξαιρείται|εξαιρούνται'
+
+        splitted = re.split(split_regex, q)
+        for s in splitted:
+            if re.search(exceptions_regex, s):
+                subtrees, smallest = ActionTreeGenerator.detect_removals_helper(s, law)
+                exceptions.extend(subtrees)
+            else:
+                subtrees, smallest = ActionTreeGenerator.detect_removals_helper(s, law)
+                removals.extend(subtrees)
+
+        for exc in exceptions:
+            try:
+                removals.remove(exc)
+            except ValueError:
+                pass
+
+        return removals, exceptions

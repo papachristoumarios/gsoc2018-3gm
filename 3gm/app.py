@@ -20,6 +20,7 @@ import gensim.models as g
 import logging
 import pprint
 import copy
+import difflib
 logger = logging.getLogger()
 logger.disabled = True
 
@@ -53,27 +54,37 @@ class UnicodeApi(Api):
 
 # RestFUL API
 api = UnicodeApi(app)
+api_lookup = {
+    'l' : 'ν.',
+    'pd' : 'π.δ.'
+}
+
+# Get id for API
+def get_id(statute_type, identifier, year):
+    try:
+        return '{} {}/{}'.format(api_lookup[statute_type], identifier, year)
+    except:
+        return '{} {}/{}'.format(statute_type, identifier, year)
 
 class LawResource(Resource):
     def get(self, statute_type, identifier, year):
         global codifier
-        _id = '{} {}/{}'.format(statute_type, identifier, year)
+        _id = get_id(statute_type, identifier, year)
         for x in codifier.db.laws.find({'_id' : _id}):
             return x
 
 class HistoryResource(Resource):
     def get(self, statute_type, identifier, year):
         global codifier
-        _id = '{} {}/{}'.format(statute_type, identifier, year)
+        _id = get_id(statute_type, identifier, year)
         return json.dumps(
                 codifier.db.get_json_from_fs(_id),
-                ensure_ascii=False
-                )
+                ensure_ascii=False)
 
 class TopicResource(Resource):
     def get(self, statute_type, identifier, year):
         global codifier
-        _id = '{} {}/{}'.format(statute_type, identifier, year)
+        _id = get_id(statute_type, identifier, year)
         topics = list(codifier.db.topics.find({
             'statutes': _id
         }))
@@ -82,12 +93,11 @@ class TopicResource(Resource):
 class LinkResource(Resource):
     def get(self, statute_type, identifier, year):
         global codifier
-        _id = '{} {}/{}'.format(statute_type, identifier, year)
+        _id = get_id(statute_type, identifier, year)
         for x in codifier.db.links.find({'_id' : _id}):
             return x
 
 class SyntaxResource(Resource):
-
     def get(self, s):
         return syntax.ActionTreeGenerator.generate_action_tree_from_string(s)
 
@@ -96,9 +106,9 @@ api.add_resource(LawResource, '/get_law/<string:statute_type>/<string:identifier
 api.add_resource(HistoryResource, '/get_history/<string:statute_type>/<string:identifier>/<string:year>')
 api.add_resource(LinkResource, '/get_link/<string:statute_type>/<string:identifier>/<string:year>')
 api.add_resource(TopicResource, '/get_topic/<string:statute_type>/<string:identifier>/<string:year>')
-api.add_resource(SyntaxResource, '/syntax_api/<string:s>')
+api.add_resource(SyntaxResource, '/get_syntax/<string:s>')
 
-# Application
+# Application Routes
 @app.route('/syntax', defaults={'js': 'plain'})
 @app.route('/syntax<any(plain, jquery, fetch):js>')
 def index(js):
@@ -123,10 +133,10 @@ def analyze():
 def visualize():
     return app.send_static_file('templates/graph.html')
 
-
 @app.route('/')
 @app.route('/codification')
 def codification():
+    """Main route used for search"""
     global codifier
     num_laws = len(codifier.laws)
     num_links = len(codifier.links)
@@ -136,6 +146,7 @@ def codification():
 
 @app.route('/autocomplete', methods=['GET'])
 def autocomplete():
+    """Autocomplete in searchbar"""
     global autocomplete_
     search = request.args.get('q')
     match = list(filter(lambda x: x.startswith(search), autocomplete_))
@@ -144,13 +155,17 @@ def autocomplete():
 
 @app.route('/codify_law', methods=['POST', 'GET'])
 def codify_law(identifier=None):
+    """Displays the current version of the law"""
     if request.method == 'POST':
         data = request.form
         identifier = data['law'].lower()
-        if identifier not in autocomplete_laws:
+        if (identifier not in autocomplete_laws) and (not (identifier.startswith('ν.') or identifier.startswith('π.δ.'))):
             doc = nlp(identifier)
             identifier = doc[0].lemma_
             return redirect('/label/{}/rank'.format(identifier))
+        else:
+            # Redirect to GET request
+            return redirect(url_for('codify_law', identifier=identifier))
     elif request.method == 'GET':
         identifier = request.args.get('identifier')
         data = {'law': identifier}
@@ -158,10 +173,12 @@ def codify_law(identifier=None):
     try:
         law = codifier.laws[data['law']]
         corpus = codifier.get_law(data['law'], export_type='markdown')
+        is_empty = is_empty_statute(corpus)
         corpus = render_links(corpus)
         content = Markup(markdown.markdown(corpus))
-    except KeyError:
-        return render_template('error.html')
+    except BaseException as e:
+        err = str(e)
+        return render_template('error.html', **locals())
 
     articles = sorted(law.sentences.keys())
 
@@ -174,8 +191,7 @@ def codify_law(identifier=None):
         topics = None
 
     try:
-        rank = round(codifier.ranks[ data['law'] ], 7) * 100
-        rank_txt = str(rank) + ' %'
+        rank_txt = str(codifier.ranking[ data['law'] ]) + 'ος'
     except:
         rank_txt = ''
 
@@ -183,6 +199,7 @@ def codify_law(identifier=None):
 
 @app.route('/amendment', methods=['POST', 'GET'])
 def amendment(identifier=None):
+    """Route to demonstrate what laws does the law amend"""
     if request.method == 'POST':
         data = request.form
     elif request.method == 'GET':
@@ -219,6 +236,7 @@ def amendment(identifier=None):
 
 @app.route('/links', methods=['POST', 'GET'])
 def links(identifier=None):
+    """Route to demonstrate links to the existing law"""
     if request.method == 'POST':
         data = request.form
     elif request.method == 'GET':
@@ -248,6 +266,7 @@ def links(identifier=None):
 
 @app.route('/history')
 def history():
+    """Displays the versioning history of a law"""
     global codifier
     identifier = request.args.get('identifier')
     history, links = codifier.get_history(identifier)
@@ -255,37 +274,132 @@ def history():
     # Get as markdown
     for x in history:
         x.content = x.export_law('markdown')
+        x.is_empty = is_empty_statute(x.content)
+        for y in codifier.db.summaries.find({'_id' : x.amendee}):
+            x.summary = y['summary']
 
     return render_template('history.html', **locals())
 
 
 @app.route('/legal_index')
 def legal_index():
+    """Displays the index containing only statutes"""
     global autocomplete_laws
-    return render_template('index.html', indexed_list=autocomplete_laws)
+    indexed_list = autocomplete_laws
+    helpers.quicksort(indexed_list, helpers.compare_statutes)
+
+    current = None
+    toc = []
+    for law in indexed_list:
+        if current == None or helpers.compare_year(law) != current:
+            current = helpers.compare_year(law)
+            toc.append((current, law))
+
+    return render_template('index.html', indexed_list=indexed_list, toc=toc)
 
 
 @app.route('/full_index')
 def full_index():
+    """Displays full linking index"""
     global codifier
-    full_index = codifier.db.links.find().sort('_id', pymongo.ASCENDING)
+    full_index = list(codifier.db.links.find())
+    helpers.quicksort(full_index, lambda x, y: helpers.compare_statutes(x['_id'], y['_id']))
 
-    return render_template('full_index.html', full_index=full_index)
+    current = None
+    toc = []
+    for law in full_index:
+        if current == None or helpers.compare_year(law['_id']) != current:
+            current = helpers.compare_year(law['_id'])
+            toc.append((current, law['_id']))
+
+    return render_template('full_index.html', full_index=full_index, toc=toc)
 
 
-@app.route('/docs/<page>')
-def docs(page):
-    return render_template('docs/' + page + '.html')
+@app.route('/label/<label>/<sorting>')
+def label(label, sorting='rank'):
+    """Label search results"""
+    topics = codifier.db.topics.find({
+        'keywords': label
+    })
 
-@app.route('/display_cards/<filename>')
-def display_cards(filename):
-    with open(filename, encoding='utf-8') as f:
-        contents = f.read().splitlines()
-    return render_template('display_cards.html', **locals())
+    refs = []
+    for t in topics:
+        refs.extend(t['statutes'])
+    refs = list(set(refs))
+
+    if sorting == 'rank':
+        def _rank(x):
+            try:
+                return -codifier.ranks[x]
+            except:
+                return 0
+        refs.sort(key=lambda x: _rank(x))
+    elif sorting == 'chronological':
+        helpers.quicksort(refs, helpers.compare_statutes)
+        refs = list(reversed(refs))
+
+    summaries = {}
+    for identifier in refs:
+        for x in codifier.db.summaries.find({'_id' : identifier}):
+            summaries[identifier] = x['summary']
+
+    return render_template('label.html', **locals())
+
+@app.route('/topics')
+def topics():
+    """Topics page"""
+    topics = codifier.topics
+    return render_template('topics.html', **locals())
+
+
+@app.route('/diff', methods=['POST', 'GET'])
+def diff():
+    """Diffs page"""
+    if request.method == 'POST':
+        data = request.form
+        print(data)
+        return redirect(url_for('diff',
+            identifier=data['identifier'],
+            final=data['final'],
+            initial=data['initial']))
+
+    global codifier
+    differ = difflib.Differ()
+
+    # Parse args
+    identifier = request.args.get('identifier')
+    final = request.args.get('final')
+    initial = request.args.get('initial')
+    history, links = codifier.get_history(identifier)
+
+    initial_gg_link = gg_link(initial)
+    final_gg_link = gg_link(final)
+
+    initial_archive_link = archive_link(initial)
+    final_archive_link = archive_link(final)
+
+    # Get as markdown
+    for x in history:
+        if x.amendee == final:
+            try:
+                final_text = x.export_law('issue').splitlines()
+            except:
+                final_text = ['']
+        elif x.amendee == initial:
+            try:
+                initial_text = x.export_law('issue').splitlines()
+            except:
+                initial_text = ['']
+
+    diffs = differ.compare(initial_text, final_text)
+
+    return render_template('diff.html', **locals())
 
 @app.route('/help')
 def help():
+    """Help page"""
     return render_template('help.html', **locals())
+
 
 def color_iterator():
     colors = [
@@ -313,6 +427,7 @@ def render_badges(l):
             '<span class="badge badge-{}">{}</span> '.format(next(colors), x)
     return result
 
+
 @app.template_filter('render_badges_single')
 def render_badges_single(l, color='light', label_url=True):
     result = ''
@@ -325,6 +440,7 @@ def render_badges_single(l, color='light', label_url=True):
             result = result + \
                 '<span class="badge badge-{}">{}</span> '.format(color, x)
     return result
+
 
 @app.template_filter('render_badges_from_tree')
 def render_badges_from_tree(tree):
@@ -358,31 +474,7 @@ def render_links(content):
 
     return ''.join(splitted)
 
-
-@app.route('/label/<label>/<sorting>')
-def label(label, sorting='rank'):
-
-    topics = codifier.db.topics.find({
-        'keywords': label
-    })
-
-    refs = []
-    for t in topics:
-        refs.extend(t['statutes'])
-
-    if sorting == 'rank':
-        def _rank(x):
-            try:
-                return -codifier.ranks[x]
-            except:
-                return 0
-        refs.sort(key=lambda x: _rank(x))
-    elif sorting == 'chronological':
-        helpers.quicksort(refs, helpers.compare_statutes)
-
-    return render_template('label.html', **locals())
-
-
+# Template filters
 def to_hyperlink(l, link_type='markdown'):
     u = url_for('codify_law', identifier=l)
     if link_type == 'html':
@@ -413,6 +505,54 @@ def archive_link(identifier):
         l = x['issue']
 
     return 'https://archive.org/details/GreekGovernmentGazette-{}'.format(l)
+
+@app.template_filter('gg_link')
+def gg_link(identifier):
+    cur = codifier.db.archive_links.find({
+            '_id' : identifier
+    })
+    for x in cur:
+        l = x['issue']
+
+    return 'ΦΕΚ Α {}/{}'.format(int(l[-4:]), l[:4])
+
+@app.template_filter('lower')
+def lower(s):
+    return s.lower()
+
+@app.template_filter('highlight_diff')
+def highlight_diff(d, initial, final, initial_archive, final_archive):
+    lookup = {
+        '+' : 'rgba(0, 255, 0, 0.3)',
+        '-' : 'rgba(255, 0, 0, 0.3)',
+        '?' :  'rgba(0, 0, 255, 0.3)'
+    }
+
+    gg_lookup = {
+        '+' : final,
+        '-' : initial,
+        '?' : 'Δεν βρίσκεται σε κανένα από τα δύο'
+    }
+
+    archive_lookup = {
+        '+' : final_archive,
+        '-' : initial_archive,
+        '?' : 'Δεν βρίσκεται σε κανένα από τα δύο'
+    }
+
+    try:
+        pref = "<a href='{}' class='no-linter'><p style='background-color: {};' data-toggle='tooltip' data-placement='right' data-html='true' title='<h3>{}</h3>' >{}</p></a>".format(archive_lookup[d[0]], lookup[d[0]], gg_lookup[d[0]], d)
+        script = '''<script>
+                    $(document).ready(function(){
+                        $('[data-toggle="tooltip"]').tooltip();
+                    });
+                    </script>'''
+        return pref + script
+    except BaseException:
+        return '<p>{}</p>'.format(d)
+
+def is_empty_statute(s):
+    return len(s.splitlines()) == 1
 
 if __name__ == '__main__':
     app.jinja_env.globals.update(render_badges=render_badges)

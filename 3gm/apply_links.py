@@ -1,3 +1,4 @@
+import copy
 import codifier
 import syntax
 import helpers
@@ -7,19 +8,25 @@ import pparser as parser
 logger = logging.getLogger()
 logger.disabled = True
 
-def apply_links(identifier):
-    try:
-        print('Rolling back...')
-        init = codifier.codifier.db.rollback_laws(identifier)
-        codifier.codifier.laws[identifier] = paraser.LawParser.from_serialized(init)
-    except:
-        print('No history on filesystem')
+def apply_links(identifier, rollback=True):
+    """Apply all modifying links on a law
+    :params identifier The identifier of the law
+    """
+    # rollback laws
+    if rollback:
+        try:
+            print('Rolling back...')
+            init = codifier.codifier.db.rollback_laws(identifier)
+            codifier.codifier.laws[identifier] = paraser.LawParser.from_serialized(init)
+        except:
+            print('No history on filesystem')
 
-    try:
-        init = codifier.codifier.db.rollback_links(identifier=identifier)
-        codifier.codifier.links[identifier] = codifier.Link.from_serialized(init)
-    except:
-        print('No links found')
+        # rollback links
+        try:
+            init = codifier.codifier.db.rollback_links(identifier=identifier)
+            codifier.codifier.links[identifier] = codifier.Link.from_serialized(init)
+        except:
+            print('No applied links found')
 
     # Get information from codifier object
     law = codifier.codifier.laws[identifier]
@@ -27,10 +34,12 @@ def apply_links(identifier):
     links.sort()
 
     # Initialize
+    # pdb.set_trace()
     initial = law.serialize()
     initial['_version'] = 0
 
-    versions = [initial]
+    versions = []
+    versions.append(copy.deepcopy(initial))
 
     # Stats
     total = 0
@@ -44,13 +53,16 @@ def apply_links(identifier):
     for i, l in enumerate(links):
         if l['from'] == tmp_index:
             # Non applied modifying links trigger amendments
-            if l['status'] == 'μη εφαρμοσμένος' and l['link_type'] == 'τροποποιητικός':
+            if l['status'] == 'μη εφαρμοσμένος' and l['link_type'] in ['τροποποιητικός', 'απαλειπτικός']:
                 increase_flag = True
                 total += 1
 
+                # Detect if removal
+                is_removal = (l['link_type'] == 'απαλειπτικός')
+
                 # Detect amendment
                 try:
-                    d, a = law.apply_amendment(l['text'])
+                    d, a, law = law.apply_amendment(l['text'], is_removal=is_removal)
 
                     # Increase accuracy bits
                     detected += d
@@ -58,6 +70,7 @@ def apply_links(identifier):
 
                     # Update link status
                     if a == 1:
+                        print('Link applied sucessfully')
                         links.actual_links[i]['status'] = 'εφαρμοσμένος'
                 except BaseException as e:
                     pass
@@ -66,7 +79,7 @@ def apply_links(identifier):
             if increase_flag:
                 # If it indeed modifies law then increase version
                 version_index += 1
-                s = law.serialize()
+                s = copy.deepcopy(law.serialize())
                 s['_version'] = version_index
                 s['amendee'] = tmp_index
                 versions.append(s)
@@ -102,9 +115,12 @@ def apply_all_links(identifiers=None):
 
     helpers.quicksort(identifiers, helpers.compare_statutes)
 
+    # initialize stats
     detection_accurracy = []
     query_accuracy = []
     total = len(identifiers)
+
+    # apply all links
     for i, identifier in enumerate(identifiers):
 
         try:
@@ -156,6 +172,10 @@ def apply_all_links(identifiers=None):
         print('Mean Query accuracy: {}%. Std: {}%'.format(
             mean(query_accuracy), stdev(query_accuracy)))
 
+def apply_links_between(start, end):
+    identifiers = list(codifier.codifier.laws.keys())
+    identifiers = list(filter(lambda x: start <= int(x[-4:]) <= end, identifiers))
+    apply_all_links(list(identifiers))
 
 if __name__ == '__main__':
-    apply_all_links()
+    apply_all_links(['π.δ. 160/2008'])

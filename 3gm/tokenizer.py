@@ -20,6 +20,9 @@ class Tokenizer:
 
         # subordinate conjuctions
         self.subordinate_conjuctions = [
+            'ο οποίος',
+            'η οποία',
+            'το οποίο',
             'ότι',
             'όπως',
             'πως',
@@ -52,6 +55,18 @@ class Tokenizer:
         """
         self.exceptions.append(e)
         hashmap[str(hash(e))] = e
+
+    def hash(q):
+        """Hash tokenizer exceptions"""
+        for e in self.exceptions:
+            q = q.replace(e, self.inv_hashmap[e])
+        return q
+
+    def inverse_hash(q):
+        """Invert hashed text"""
+        for h, e in self.hashmap.items():
+            q = q.replace(h, e)
+        return q
 
     def split(self, q, remove_subordinate=False, *delimiter):
         """Split a string using the tokenizer

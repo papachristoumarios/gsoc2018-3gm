@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import tokenizer
+import copy
 import re
 import multiprocessing
 import numpy as np
@@ -20,6 +21,7 @@ import glob
 import sys
 import phrase_fun
 import syntax
+import json
 
 # configuration and parameters
 
@@ -120,13 +122,13 @@ class IssueParser:
         paragraphs = collections.defaultdict(list)
 
         paragraph_ids = [
-            par_id.group().strip('. ') for par_id in re.finditer(
-                r'\d+. ', self.articles[article])]
+            par_id.group().strip('.') for par_id in re.finditer(
+                r'\d+.', self.articles[article])]
         paragraph_corpus = list(
             filter(
                 lambda x: x.rstrip() != '',
                 re.split(
-                    r'\d+. ',
+                    r'\d+.',
                     self.articles[article])))
         paragraph_corpus = [p.rstrip().lstrip() for p in paragraph_corpus]
         return paragraph_corpus
@@ -240,9 +242,9 @@ class IssueParser:
             paragraphs = collections.defaultdict(list)
             current = '0'
             for t in content:
-                x = re.search(r'\d+. ', t)
-                if x and x.span() in [(0, 3), (0, 4)]:
-                    current = x.group().strip('. ')
+                x = re.search(r'\d+.', t)
+                if x and x.span() in [(0, 2), (0, 3)]:
+                    current = x.group().strip('.')
                 paragraphs[current].append(t)
 
             sentences = {}
@@ -532,8 +534,8 @@ class LawParser:
         start = 0
 
         for i, t in enumerate(lines):
-            x = re.search(r'\d+. ', t)
-            if x and x.span() in [(0, 3), (0, 4)]:
+            x = re.search(r'\d+.', t)
+            if x and x.span() in [(0, 2), (0, 3)]:
                 try:
                     number = int(x.group().split('.')[0])
                 except BaseException:
@@ -586,8 +588,8 @@ class LawParser:
 
     def find_corpus(self, government_gazette_issue=False, fix_paragraphs=True):
         """Analyzes the corpus to articles, paragraphs and
-        then sentences
-        """
+        then sentences"""
+
         idx = []
         for i, line in enumerate(self.lines):
             if line.startswith('Αρθρο:') or line.startswith('Άρθρο '):
@@ -603,7 +605,7 @@ class LawParser:
 
         if fix_paragraphs:
 
-            for article in self.corpus.keys():
+            for Κείμενοarticle in self.corpus.keys():
                 fixed_lines, title = self.fix_paragraphs(self.corpus[article])
                 self.titles[article] = title
                 self.corpus[article] = fixed_lines
@@ -621,9 +623,9 @@ class LawParser:
                     paragraphs = collections.defaultdict(list)
                     current = '0'
                     for t in self.articles[article]:
-                        x = re.search(r'\d+. ', t)
-                        if x and x.span() in [(0, 3), (0, 4)]:
-                            current = x.group().strip('. ')
+                        x = re.search(r'\d+.', t)
+                        if x and x.span() in [(0, 2), (0, 3)]:
+                            current = x.group().strip('.')
                         paragraphs[current].append(t)
 
                     sentences = {}
@@ -647,13 +649,7 @@ class LawParser:
 
                     if government_gazette_issue:
                         break
-
-                elif line.startswith('Λήμματα'):
-                    self.lemmas[article] = self.corpus[article][i +
-                                                                1].split(' - ')
-                elif line.startswith('Τίτλος Αρθρου'):
-                    self.titles[article] = self.corpus[article][i + 1]
-
+        
     def __dict__(self):
         return self.serialize()
 
@@ -700,19 +696,19 @@ class LawParser:
         article = str(article)
         paragraphs = collections.defaultdict(list)
 
-        paragraph_ids = [par_id.group().strip('. ')
-                         for par_id in re.finditer(r'\d+. ', content)]
+        paragraph_ids = [par_id.group().strip('.')
+                         for par_id in re.finditer(r'\d+.', content)]
 
         # filter ids
         filtered_ids = []
         current = 1
         for i, x in enumerate(paragraph_ids):
             if int(x) == current:
-                filtered_ids.append(x + '. ')
+                filtered_ids.append(x + '.')
                 current += 1
 
         if len(paragraph_ids) == 0:
-            filtered_ids = ['1']        
+            filtered_ids = ['1']
 
         filtered_ids_regex = '|'.join(map(re.escape, filtered_ids))
         paragraph_corpus = list(
@@ -776,7 +772,10 @@ class LawParser:
         paragraph = str(paragraph)
 
         # prepare content for modification
-        content = re.sub(r'\d+. ', '', content)
+        try:
+            content = helpers.remove_front_num(content).rstrip('.')
+        except BaseException:
+            content = content.rstrip('.')
 
         # add in its full form or split into periods
         self.articles[article][paragraph] = content
@@ -961,8 +960,9 @@ class LawParser:
                             self.sentences[article][paragraph]):
                         if old_period == period:
                             self.sentences[article][paragraph][i] = new_period
+        elif position == 'append':
+            self.sentences[article][paragraph][-1] = new_period
         else:
-            assert(article and paragraph)
             self.sentences[article][paragraph][int(position)] = new_period
 
         return self.serialize()
@@ -1098,26 +1098,35 @@ class LawParser:
     def renumber_article(self, old_id, new_id):
         """Renumber article to new id"""
         assert(article)
-        self.sentences[new_id] = copy.copy(self.sentences[old_id])
+        self.sentences[new_id] = copy.deepcopy(self.sentences[old_id])
         del self.sentences[old_id]
         return self.serialize()
 
     def renumber_paragraph(self, article, old_id, new_id):
         """Renumber paragraph to new id"""
         assert(article)
-        self.sentences[article][new_id] = copy.copy(
+        self.sentences[article][new_id] = copy.deepcopy(
             self.sentences[article][old_id])
         del self.sentences[article][old_id]
         return self.serialize()
 
-    def apply_amendment(self, s, throw_exceptions=False):
+    def delete(self):
+        self.sentences = {}
+        self.titles = {}
+        return self.serialize()
+
+    def apply_amendment(self, s, is_removal=False, throw_exceptions=False):
         """Applies amendment given a string s
         params s: Query string
         params throw_exceptions: Throw exceptions upon unsucessfull operations
         """
         detected = 0
         applied = 0
-        trees = syntax.ActionTreeGenerator.generate_action_tree_from_string(s)
+
+        if is_removal:
+            trees, exc = syntax.ActionTreeGenerator.detect_removals(s)
+        else:
+            trees = syntax.ActionTreeGenerator.generate_action_tree_from_string(s)
         for t in trees:
             detected = 1
             try:
@@ -1127,7 +1136,7 @@ class LawParser:
             except BaseException:
                 if throw_exceptions:
                     raise UnrecognizedAmendmentException(t)
-        return detected, applied
+        return detected, applied, self
 
     def query_from_tree(self, tree):
         """Returns a serizlizable object from a tree in nested form
@@ -1145,12 +1154,16 @@ class LawParser:
             except KeyError:
                 raise Exception('Unable to find content or context in tree')
 
-            if context in ['άρθρο', 'άρθρα']:
+            if context in ['άρθρο', 'άρθρα', 'article']:
+                if not tree['article']['_id'].isdigit():
+                    tree['article']['_id'] = self.get_next_article()
                 return self.add_article(
                     article=tree['article']['_id'],
                     content=content)
 
-            elif context in ['παράγραφος', 'παράγραφοι']:
+            elif context in ['παράγραφος', 'παράγραφοι', 'paragraph']:
+                if not tree['paragraph']['_id'].isdigit():
+                    tree['article']['_id'] = self.get_next_paragraph(tree['article']['_id'])
                 return self.add_paragraph(
                     article=tree['article']['_id'],
                     paragraph=tree['paragraph']['_id'],
@@ -1158,20 +1171,29 @@ class LawParser:
 
             elif context in ['εδάφιο', 'εδάφια']:
                 if tree['root']['action'] in ['προστίθεται', 'προστίθενται']:
+                    try:
+                        pos = int(tree['period']['_id']) - 1
+                    except:
+                        pos = tree['period']['_id']
                     return self.insert_period(
-                        position=int(tree['period']['_id']) - 1,
+                        position=pos,
                         old_period='',
                         new_period=content,
                         article=tree['article']['_id'],
                         paragraph=tree['paragraph']['_id'])
                 elif tree['root']['action'] in ['αντικαθίσταται', 'αντικαθίστανται', 'τροποποιείται', 'τροποποιούνται']:
+                    try:
+                        pos = int(tree['period']['_id']) - 1
+                    except:
+                        pos = tree['period']['_id']
+
                     return self.replace_period(
                         old_period='',
                         new_period=content,
-                        position=int(tree['period']['_id']) - 1,
+                        position=pos,
                         article=tree['article']['_id'],
                         paragraph=tree['paragraph']['_id'])
-            elif context in ['φράση', 'φράσεις']:
+            elif context in ['φράση', 'φράσεις', 'phrase']:
                 if tree['root']['action'] in ['προστίθεται', 'προστίθενται']:
                     return self.insert_phrase(
                         new_phrase=tree['phrase']['new_phrase'],
@@ -1187,13 +1209,13 @@ class LawParser:
                         article=tree['article']['_id'],
                         paragraph=tree['paragraph']['_id'])
 
-            elif context in ['τίτλος', 'τίτλοι']:
+            elif context in ['τίτλος', 'τίτλοι', 'title']:
                 return self.set_title(
                     content=content,
                     article=tree['article']['_id']
                 )
-            elif context in ['περίπτωση', 'περιπτώσεις', 'υποπερίπτωση', 'υποπεριπτώσεις']:
-                if context in ['περίπτωση', 'περιπτώσεις']:
+            elif context in ['περίπτωση', 'περιπτώσεις', 'υποπερίπτωση', 'υποπεριπτώσεις', 'case']:
+                if context in ['περίπτωση', 'περιπτώσεις', 'case']:
                     case_letter = tree['case']['_id']
                 else:
                     case_letter = tree['subcase']['_id']
@@ -1229,16 +1251,20 @@ class LawParser:
             except KeyError:
                 raise Exception('Unable to find context in tree')
 
-            if context in ['άρθρο', 'άρθρα']:
+            if context == 'law':
+                print('delete self')
+                return self.delete()
+
+            elif context in ['άρθρο', 'άρθρα', 'article']:
                 return self.remove_article(
                     article=tree['article']['_id']
                 )
-            elif context in ['παράγραφος', 'παράγραφοι']:
+            elif context in ['παράγραφος', 'παράγραφοι', 'paragraph']:
                 return self.remove_paragraph(
                     article=tree['article']['_id'],
-                    paragraph=['paragraph']['_id']
+                    paragraph=tree['paragraph']['_id']
                 )
-            elif context in ['εδάφιο', 'εδάφια']:
+            elif context in ['εδάφιο', 'εδάφια', 'period']:
                 if tree['period']['_id']:
                     return self.remove_period(
                         old_period='',
@@ -1246,14 +1272,14 @@ class LawParser:
                         article=tree['article']['_id'],
                         paragraph=tree['paragraph']['_id']
                     )
-            elif context in ['φράση', 'φράσεις', 'λέξη', 'λέξεις']:
+            elif context in ['φράση', 'φράσεις', 'λέξη', 'λέξεις', 'phrase']:
                 return self.remove_phrase(
                     old_phrase=tree['phrase']['old_phrase'],
                     article=tree['article']['_id'],
                     paragraph=tree['paragraph']['_id']
                 )
 
-            elif context in ['περίπτωση', 'περιπτώσεις', 'υποπερίπτωση', 'υποπεριπτώσεις']:
+            elif context in ['περίπτωση', 'περιπτώσεις', 'υποπερίπτωση', 'υποπεριπτώσεις', 'case', 'subcase']:
                 if context in ['περίπτωση', 'περιπτώσεις']:
                     case_letter = tree['case']['_id']
                 else:
@@ -1274,18 +1300,18 @@ class LawParser:
             except KeyError:
                 raise Exception('Unable to find context in tree')
 
-            if context in ['άρθρο', 'άρθρα']:
+            if context in ['άρθρο', 'άρθρα', 'article']:
                 return self.renumber_article(
                     tree['article']['_id'],
                     tree['what']['to']
                 )
-            elif context in ['παράγραφος', 'παράγραφοι']:
+            elif context in ['παράγραφος', 'παράγραφοι', 'paragraph']:
                 return self.renumber_paragraph(
                     tree['article']['_id'],
                     tree['paragraph']['_id'],
                     tree['what']['to']
                 )
-            elif context in ['περίπτωση', 'περιπτώσεις', 'υποπεριπτώση', 'υποπεριπτώσεις']:
+            elif context in ['περίπτωση', 'περιπτώσεις', 'υποπεριπτώση', 'υποπεριπτώσεις', 'case', 'subcase']:
                 if context in ['περίπτωση', 'περιπτώσεις']:
                     case_letter = tree['case']['_id']
                 else:
@@ -1307,24 +1333,29 @@ class LawParser:
         :params paragraph_id : Paragraph ID
         """
         try:
-            return '. '.join(self.sentences[article][paragraph_id])
+            return '. '.join(self.sentences[article][paragraph_id]).rstrip('.') + '.'
         except:
             self.sentences[article][paragraph_id] = list(filter(
                 lambda p: p != None, self.sentences[article][paragraph_id]
             ))
         finally:
-            return '. '.join(self.sentences[article][paragraph_id])
+            return '. '.join(self.sentences[article][paragraph_id]).rstrip('.') + '.'
 
 
     def get_paragraphs(self, article):
         """Return Paragraphs via a generator
         :params article : The article number
         """
+        def _get_par(x):
+            try:
+                return int(x.strip(')'))
+            except:
+                return 100
 
         article = str(article)
         for paragraph_id in sorted(
                 self.sentences[article].keys(),
-                key=lambda x: int(x.strip(')'))):
+                key=_get_par):
             yield self.get_paragraph(article, paragraph_id)
 
     def get_articles_sorted(self):
@@ -1357,7 +1388,10 @@ class LawParser:
             for article in self.get_articles_sorted():
                 result = result + '### Άρθρο {} \n'.format(article)
                 if add_titles:
-                    result = result + '#### {}\n'.format(self.titles[article])
+                    try:
+                        result = result + '#### {}\n'.format(self.titles[article])
+                    except:
+                        pass
                 for i, paragraph in enumerate(self.get_paragraphs(article)):
                     result = result + \
                         ' {}. {}\n'.format(i, paragraph)
@@ -1374,6 +1408,11 @@ class LawParser:
             result = ''
             for article in self.get_articles_sorted():
                 result = result + 'Άρθρο {} \n'.format(article)
+                if add_titles:
+                    try:
+                        result = result + '{}\n'.format(self.titles[article])
+                    except:
+                        pass
                 for i, paragraph in enumerate(self.get_paragraphs(article)):
                     result = result + \
                         ' {}. {}\n'.format(i + 1, paragraph)
@@ -1388,62 +1427,13 @@ class LawParser:
 
             for key, val in abbreviations.items():
                 if self.identifier.lower().startswith(key):
-                    counter = self.identifier.split('/')[-2]
+                    counter = self.identifier.strip(key).split('/')[-2]
                     result = '{} ΥΠ’ ΑΡΙΘΜ. {}\n'.format(val, counter)
                     break
 
             result = result + self.export_law('plaintext')
 
         return result
-
-    def apply_links(self, links):
-        """Apply links to the given law
-        :params links : A Link object
-        Returns the serializable object containing all the versions of the
-        current statute and the links themselves.
-        """
-
-        self.autoincrement_version = False
-
-        links_hash = collections.defaultdict(list)
-        serializables = []
-
-        for l in links:
-            links_hash[l['from']].append(l)
-
-        sorted_links_keys = sorted(links_hash.keys(), key=helpers.compare_year)
-
-        links_groups = []
-
-        for k in sorted_links_keys:
-            links_groups.append(links_hash[k])
-
-        initial = self.serialize()
-        initial['_version'] = self.version_index
-
-        versions = [initial]
-
-        for link_group in links_groups:
-            # TODO Add syntax and db
-            # TODO update link state
-            for l in link_group:
-                pass  # APPLY LINK
-
-            self.version_index += 1
-
-            s = self.serialize()
-            s['_version'] = self.version_index
-            s['amendee'] = link_group[0]['from']
-            versions.append(s)
-
-            input()
-
-        final_serializable = {
-            '_id': self.identifier,
-            'versions': versions
-        }
-
-        return final_serializable, links_hash, links
 
     def prune_title(self, article):
         self.titles[article] = re.sub(
@@ -1453,6 +1443,14 @@ class LawParser:
     def prune_titles(self):
         for title in self.titles:
             self.prune_title(title)
+
+    def get_next_article(self):
+        maximum = max([int(x) for x in self.sentences.keys()])
+        return str(maximum + 1)
+
+    def get_next_paragraph(self, article):
+        maximum = max([int(x) for x in self.sentences[article].keys()])
+        return str(maximum + 1)
 
 
 class UnsupportedOperationException(Exception):

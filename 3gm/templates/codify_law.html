@@ -3,7 +3,7 @@
 
 <h3>Αποτελέσματα Κωδικοποίησης για τον {{ data['law'] }}</h3>
 
-<ul class='law-options'>
+<ul class='law-options navbar-ul'>
 <li><a href="{{ url_for('history', identifier=data['law'] )}}">Δείτε το πλήρες ιστορικό του {{ data['law'] }}</a></li>
 <li><a href="{{ url_for('amendment', identifier=data['law'] )}}">Δείτε τους νόμους που τροποποιεί ο {{ data['law'] }}</a></li>
 <li><a href="{{ url_for('links', identifier=data['law'] )}}">Δείτε του συνδέσμους στον {{ data['law'] }}</a></li>
@@ -24,7 +24,11 @@
 
     <div id="collapseOne" class="collapse show" aria-labelledby="headingOne" data-parent="#accordion">
       <div class="card-body">
-        {{ content | safe }}
+        {% if not is_empty %}
+          {{ content | safe }}
+        {% else %}
+          <p class="warning">Το νομοθέτημα έχει καταργηθεί</p>
+        {% endif %}
       </div>
     </div>
   </div>

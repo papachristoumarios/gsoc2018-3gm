@@ -43,7 +43,7 @@ def handle_download(download_page, params):
 	year = params['issue_date'].year
 
 	dirs = '{}/{}/{}'.format(vol, year, filename[6:9])
-	os.system('mkdir -p {}'.format(dirs))
+	os.system('mkdir -p {}/{}'.format(output_dir, dirs))
 	outfile = '{}/{}/{}'.format(output_dir, dirs, filename)
 
 	if os.path.isfile(outfile):
@@ -73,7 +73,8 @@ def archive_format(params):
 	# Format for Internet Archive
 	volumes = {
 		'Α' : '01',
-		'Β' : '02'
+		'Β' : '02',
+		'B' : '02'
 	}
 
 	num =  params['issue_number']
@@ -252,7 +253,7 @@ if __name__ == '__main__':
 		for current_page in range(0, num_pages):
 
 			# Extract and handle download links.
-			filenames_ = extract_download_links(driver.page_source, 'Α')
+			filenames_ = extract_download_links(driver.page_source, args.type)
 
 			if args.upload:
 				filenames.extend(filenames_)
@@ -272,5 +273,5 @@ if __name__ == '__main__':
 		driver.quit()
 
 		if args.upload:
-			import uploader
-			uploader.upload(filenames)
+			for f in filenames:
+				os.system('./ia-upload.sh ' + f)
