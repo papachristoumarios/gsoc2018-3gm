@@ -157,10 +157,12 @@ class LawCodifier:
         self.laws = {}
         self.links = {}
         self.topics = []
+        self.named_entities = []
         self.db = database.Database()
         self.populate_laws()
         self.populate_links()
         self.populate_topics()
+        self.populate_named_entities()
         self.issues = []
         if issues_directory:
             self.populate_issues(issues_directory)
@@ -183,11 +185,20 @@ class LawCodifier:
             self.topics.append(x)
         return self.topics
 
+    def populate_named_entities(self):
+        """Populate named_entities in codifier object"""
+
+        cur = self.db.named_entities.find()
+        for x in cur:
+            self.named_entities.append(x)
+        return self.named_entities
+
     def populate_laws(self):
         """Populate laws from database and fetch latest versions"""
 
         cursor = self.db.laws.find({"versions": {"$ne": None}})
-        for x in cursor:
+        for ptr in cursor:
+            x = self.db.get_json_from_fs(_id=ptr['_id'])
             current_version = 0
             current_instance = None
             for v in x['versions']:
@@ -204,7 +215,7 @@ class LawCodifier:
 
         history = []
 
-        x = self.db.get_json_from_fs(_id = law)
+        x = self.db.get_json_from_fs(_id=law)
 
         for v in x['versions']:
             current_version = int(v['_version'])
@@ -312,25 +323,37 @@ class LawCodifier:
             for k in new_laws.keys():
                 new_laws[k].amendee = k
                 archive_link = {
-                    '_id' : k,
-                    'issue' : issue.filename.replace('.txt', '')
+                    '_id': k,
+                    'issue': issue.filename.replace('.txt', '')
                 }
                 self.db.archive_links.save(archive_link)
                 try:
                     serializable = new_laws[k].__dict__()
+                    serializable_non_full = new_laws[k].serialize(full=False)
                     serializable['_version'] = 0
+                    serializable_non_full['_version'] = 0
                     serializable['amendee'] = k
+                    serializable_non_full['amendee'] = k
                     try:
                         serializable['issue'] = helpers.parse_filename(
                             issue.filename)
                     except BaseException:
                         pass
-                    self.db.laws.save({
+                    self.db.save_json_to_fs(_id=new_laws[k].identifier,
+                                            _json={
                         '_id': new_laws[k].identifier,
                         'versions': [
                             serializable
                         ]
                     })
+
+                    self.db.laws.save({
+                        '_id': new_laws[k].identifier,
+                        'versions': [
+                            serializable_non_full
+                        ]
+                    })
+
                 except BaseException as e:
                     logging.warning(str(e))
 
@@ -348,8 +371,9 @@ class LawCodifier:
         with open(outfile, 'w+') as f:
             for law in self.laws:
                 s = self.get_law(law, export_type='str')
-                f.write(s + '\n')
-                labels.write(str(law) + '\n')
+                if s:
+                    f.write(s + '\n')
+                    labels.write(str(law) + '\n')
         labels.close()
 
     def export_phrase_links(self, outfile):
@@ -388,7 +412,8 @@ class LawCodifier:
         for identifier, law in self.laws.items():
             articles = law.sentences.keys()
 
-            self.detect_and_apply_removals(identifier=identifier, generate_links=True)
+            self.detect_and_apply_removals(
+                identifier=identifier, generate_links=True)
 
             for article in articles:
                 for paragraph in law.get_paragraphs(article):
@@ -572,7 +597,8 @@ class LawCodifier:
         # detect and apply removals
         for article in removing_articles:
             for i, paragraph in enumerate(self.laws[identifier].get_paragraphs(article)):
-                removals, exceptions = syntax.ActionTreeGenerator.detect_removals(paragraph)
+                removals, exceptions = syntax.ActionTreeGenerator.detect_removals(
+                    paragraph)
 
                 for subtree in removals:
                     target = subtree['law']['_id']
@@ -580,7 +606,8 @@ class LawCodifier:
                         if generate_links:
                             if target not in self.links:
                                 self.links[target] = Link(target)
-                            self.links[target].add_link(identifier, paragraph, link_type='απαλειπτικός')
+                            self.links[target].add_link(
+                                identifier, paragraph, link_type='απαλειπτικός')
                             self.db.links.save(self.links[target].serialize())
                         else:
                             self.laws[target].query_from_tree(subtree)
@@ -602,6 +629,7 @@ def build(
             'laws',
             'links',
             'topics',
+            'named_entities',
             'versions'],
         drop=True):
     """Build codifier object
@@ -618,6 +646,7 @@ def build(
     # Import here for performance
     import topic_models
     import apply_links
+    import entity_recogniser
 
     if not data_dir[-1] == '/':
         data_dir = data_dir + '/'
@@ -635,6 +664,7 @@ def build(
         'laws': cod.codify_new_laws,
         'links': cod.create_law_links,
         'topics': topic_models.build_topics,
+        'named_entities': entity_recogniser.build_named_entities,
         'versions': apply_links.apply_all_links
     }
 
@@ -643,6 +673,7 @@ def build(
         'laws': cod.db.drop_laws,
         'links': cod.db.drop_links,
         'topics': cod.db.drop_topics,
+        'named_entities': cod.db.drop_named_entities,
         'versions': cod.db.rollback_all
     }
 
